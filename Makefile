@@ -24,3 +24,8 @@ CPPFLAGS=-Ofast -DTARGET_PI -march=armv6 \
 
 gemm: $(CPPOBJS) $(ASMOBJS)
 	g++ -g -O3 -o gemm $(CPPOBJS) $(ASMOBJS) -lblas
+
+clean:
+	rm -r *.o *.do gemm
+
+.PHONY: clean
