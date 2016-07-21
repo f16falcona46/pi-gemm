@@ -111,8 +111,10 @@ void qpu_cblas_sgemm(
   size_t qpuCodeByteCount = g_gemm_floatCodeByteCount;
 
   const float aRange = 1.0f;
+  
+  int fdesc = mbox_open();
 
-  if (qpu_enable(1)) {
+  if (qpu_enable(fdesc, 1)) {
       fprintf(stderr, "QPU enable failed.\n");
       return;
   }
@@ -132,12 +134,12 @@ void qpu_cblas_sgemm(
     uniformByteCount +
     debugByteCount);
 
-  uint32_t gpuMemoryHandle = mem_alloc(totalByteCount, 4096, GPU_MEM_FLG);
+  uint32_t gpuMemoryHandle = mem_alloc(fdesc, totalByteCount, 4096, GPU_MEM_FLG);
   if (!gpuMemoryHandle) {
     fprintf(stderr, "Unable to allocate %d bytes of GPU memory", totalByteCount);
     return;
   }
-  uint32_t gpuMemoryBase = mem_lock(gpuMemoryHandle);
+  uint32_t gpuMemoryBase = mem_lock(fdesc, gpuMemoryHandle);
   char* armMemoryBase = (char*)(mapmem(gpuMemoryBase + GPU_MEM_MAP, totalByteCount));
 
   const size_t messageOffset = 0;
@@ -195,7 +197,7 @@ void qpu_cblas_sgemm(
     messageArm[1] = codeInputGpu;
   }
 
-  unsigned ret = execute_qpu(NUM_QPUS, messageInputGpu, 1, 10000);
+  unsigned ret = execute_qpu(fdesc, NUM_QPUS, messageInputGpu, 1, 10000);
 
   // Uncomment this if you want to display the rDebugOutput register value after executing the program
   for (int i=0; i < NUM_QPUS; i++) {
@@ -210,9 +212,9 @@ void qpu_cblas_sgemm(
   }
 
   unmapmem(armMemoryBase, totalByteCount);
-  mem_unlock(gpuMemoryHandle);
-  mem_free(gpuMemoryHandle);
-  qpu_enable(0);
+  mem_unlock(fdesc, gpuMemoryHandle);
+  mem_free(fdesc, gpuMemoryHandle);
+  qpu_enable(fdesc, 0);
 
   struct timeval end;
   gettimeofday(&end, NULL);

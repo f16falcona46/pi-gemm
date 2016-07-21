@@ -34,18 +34,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdint.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 
 #include "mailbox.h"
 
-#define MAJOR_NUM 100
-#define IOCTL_MBOX_PROPERTY _IOWR(MAJOR_NUM, 0, char *)
-#define DEVICE_DIRECTORY "/var/lib/jpcnn"
-#define DEVICE_PATH "/var/lib/jpcnn/char_dev"
 #define PAGE_SIZE (4*1024)
-
-int g_mailboxHandle = -1;
 
 void *mapmem(unsigned base, unsigned size)
 {
@@ -75,7 +67,7 @@ void *mapmem(unsigned base, unsigned size)
    return (char *)mem + offset;
 }
 
-void *unmapmem(void *addr, unsigned size)
+void unmapmem(void *addr, unsigned size)
 {
    int s = munmap(addr, size);
    if (s != 0) {
@@ -88,9 +80,8 @@ void *unmapmem(void *addr, unsigned size)
  * use ioctl to send mbox property message
  */
 
-static int mbox_property(void *buf)
+static int mbox_property(int file_desc, void *buf)
 {
-   int file_desc = get_mbox();
    int ret_val = ioctl(file_desc, IOCTL_MBOX_PROPERTY, buf);
 
    if (ret_val < 0) {
@@ -105,7 +96,7 @@ static int mbox_property(void *buf)
    return ret_val;
 }
 
-unsigned mem_alloc(unsigned size, unsigned align, unsigned flags)
+unsigned mem_alloc(int file_desc, unsigned size, unsigned align, unsigned flags)
 {
    int i=0;
    unsigned p[32];
@@ -122,11 +113,11 @@ unsigned mem_alloc(unsigned size, unsigned align, unsigned flags)
    p[i++] = 0x00000000; // end tag
    p[0] = i*sizeof *p; // actual size
 
-   mbox_property(p);
+   mbox_property(file_desc, p);
    return p[5];
 }
 
-unsigned mem_free(unsigned handle)
+unsigned mem_free(int file_desc, unsigned handle)
 {
    int i=0;
    unsigned p[32];
@@ -141,11 +132,11 @@ unsigned mem_free(unsigned handle)
    p[i++] = 0x00000000; // end tag
    p[0] = i*sizeof *p; // actual size
 
-   mbox_property(p);
+   mbox_property(file_desc, p);
    return p[5];
 }
 
-unsigned mem_lock(unsigned handle)
+unsigned mem_lock(int file_desc, unsigned handle)
 {
    int i=0;
    unsigned p[32];
@@ -160,11 +151,11 @@ unsigned mem_lock(unsigned handle)
    p[i++] = 0x00000000; // end tag
    p[0] = i*sizeof *p; // actual size
 
-   mbox_property(p);
+   mbox_property(file_desc, p);
    return p[5];
 }
 
-unsigned mem_unlock(unsigned handle)
+unsigned mem_unlock(int file_desc, unsigned handle)
 {
    int i=0;
    unsigned p[32];
@@ -179,11 +170,11 @@ unsigned mem_unlock(unsigned handle)
    p[i++] = 0x00000000; // end tag
    p[0] = i*sizeof *p; // actual size
 
-   mbox_property(p);
+   mbox_property(file_desc, p);
    return p[5];
 }
 
-unsigned execute_code(unsigned code, unsigned r0, unsigned r1, unsigned r2, unsigned r3, unsigned r4, unsigned r5)
+unsigned execute_code(int file_desc, unsigned code, unsigned r0, unsigned r1, unsigned r2, unsigned r3, unsigned r4, unsigned r5)
 {
    int i=0;
    unsigned p[32];
@@ -204,11 +195,11 @@ unsigned execute_code(unsigned code, unsigned r0, unsigned r1, unsigned r2, unsi
    p[i++] = 0x00000000; // end tag
    p[0] = i*sizeof *p; // actual size
 
-   mbox_property(p);
+   mbox_property(file_desc, p);
    return p[5];
 }
 
-unsigned qpu_enable(unsigned enable)
+unsigned qpu_enable(int file_desc, unsigned enable)
 {
    int i=0;
    unsigned p[32];
@@ -224,11 +215,11 @@ unsigned qpu_enable(unsigned enable)
    p[i++] = 0x00000000; // end tag
    p[0] = i*sizeof *p; // actual size
 
-   mbox_property(p);
+   mbox_property(file_desc, p);
    return p[5];
 }
 
-unsigned execute_qpu(unsigned num_qpus, unsigned control, unsigned noflush, unsigned timeout) {
+unsigned execute_qpu(int file_desc, unsigned num_qpus, unsigned control, unsigned noflush, unsigned timeout) {
    int i=0;
    unsigned p[32];
 
@@ -245,42 +236,21 @@ unsigned execute_qpu(unsigned num_qpus, unsigned control, unsigned noflush, unsi
    p[i++] = 0x00000000; // end tag
    p[0] = i*sizeof *p; // actual size
 
-   mbox_property(p);
+   mbox_property(file_desc, p);
    return p[5];
 }
 
-int get_mbox() {
-  if (g_mailboxHandle == -1) {
-    g_mailboxHandle = mbox_open();
-  }
-  return g_mailboxHandle;
-}
-
 int mbox_open() {
-  int file_desc;
+   int file_desc;
 
-  struct stat sb;
-  if (stat(DEVICE_DIRECTORY, &sb) != 0 || !S_ISDIR(sb.st_mode)) {
-    if (mkdir(DEVICE_DIRECTORY, 0777) == -1) {
-      printf("Can't open or create %s\nThis program should be run as root. Try prefixing command with: sudo\n", DEVICE_DIRECTORY);
+   // open a char device file used for communicating with kernel mbox driver
+   file_desc = open(DEVICE_FILE_NAME, 0);
+   if (file_desc < 0) {
+      printf("Can't open device file: %s\n", DEVICE_FILE_NAME);
+      printf("Try creating a device file with: sudo mknod %s c %d 0\n", DEVICE_FILE_NAME, MAJOR_NUM);
       exit(-1);
-    }
-  }
-
-  if (stat(DEVICE_PATH, &sb) != 0) {
-    if (mknod(DEVICE_PATH, (0777 | S_IFCHR), makedev(MAJOR_NUM, 0)) == -1) {
-      printf("Can't open or create %s\nThis program should be run as root. Try prefixing command with: sudo\n", DEVICE_PATH);
-      exit(-1);
-    }
-  }
-
-  // open a char device file used for communicating with kernel mbox driver
-  file_desc = open(DEVICE_PATH, 0);
-  if (file_desc < 0) {
-    printf("Can't open device file: %s\n", DEVICE_PATH);
-    exit(-1);
-  }
-  return file_desc;
+   }
+   return file_desc;
 }
 
 void mbox_close(int file_desc) {

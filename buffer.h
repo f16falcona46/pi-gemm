@@ -31,6 +31,7 @@ public:
   bool _doesOwnData;
   char* _debugString;
   char* _name;
+  int fdesc;
 
   void populateWithRandomValues(float min, float max);
 

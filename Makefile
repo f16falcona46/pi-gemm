@@ -26,6 +26,6 @@ gemm: $(CPPOBJS) $(ASMOBJS)
 	g++ -g -O3 -o gemm $(CPPOBJS) $(ASMOBJS) -lblas
 
 clean:
-	rm -r *.o *.do gemm
+	rm -f *.o *.do gemm
 
 .PHONY: clean

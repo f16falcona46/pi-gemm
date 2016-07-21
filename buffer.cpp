@@ -24,13 +24,14 @@ Buffer::Buffer(const Dimensions& dims) :
   _debugString(NULL),
   _bitsPerElement(32)
 {
+  this->fdesc = mbox_open();
   const int elementCount = _dims.elementCount();
   const size_t byteCount = (elementCount * sizeof(float));
-  _gpuMemoryHandle = mem_alloc(byteCount, 4096, GPU_MEM_FLG);
+  _gpuMemoryHandle = mem_alloc(fdesc, byteCount, 4096, GPU_MEM_FLG);
   if (!_gpuMemoryHandle) {
     fprintf(stderr, "Unable to allocate %d bytes of GPU memory\n", byteCount);
   }
-  _gpuMemoryBase = mem_lock(_gpuMemoryHandle);
+  _gpuMemoryBase = mem_lock(fdesc, _gpuMemoryHandle);
   _data = (float*)(mapmem(_gpuMemoryBase + GPU_MEM_MAP, byteCount));
   _doesOwnData = true;
   setName("None");
@@ -44,8 +45,8 @@ Buffer::~Buffer()
       const size_t byteCount = (elementCount * sizeof(float));
       unmapmem(_data, byteCount);
     }
-    mem_unlock(_gpuMemoryHandle);
-    mem_free(_gpuMemoryHandle);
+    mem_unlock(fdesc, _gpuMemoryHandle);
+    mem_free(fdesc, _gpuMemoryHandle);
   }
   if (_debugString)
   {
